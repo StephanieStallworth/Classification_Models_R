@@ -1,0 +1,115 @@
+---
+title: "Predictive Machine Learning"
+author: "Stephanie Stallworth"
+date: "April 8, 2017"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+```{r setup, include=FALSE,comment=""}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### **Executive Summary**
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. The frequency an activity is performed is often quantified, but how well that activity is performed is rarely examined.
+
+This analysis uses data from accelerometers attached to 6 participants who were asked to perform barbell lifts correctly and incorrectly 5 different ways. The "classe" variable corresponds to how the exercise was performed by the participants with"A" denoting correct execution and the other 4 classes (B,C,D,and E) corresponding to common mistakes.
+
+My objective is to build a model to predict the manner in which participants performed the exercises for 20 different test cases. Outlined in this report are my processes for cross validation,building the model, and estimating out of sample error.
+
+### **Data Processing**
+```{r, warning = FALSE, message = FALSE,comment=""}
+
+# Read test and training data
+train_in<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", header = T)
+validation<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", header = T)
+
+# Partition data
+set.seed(127)
+library(caret)
+training_sample <- createDataPartition(y=train_in$classe, p=0.7, list=FALSE)
+training <- train_in[training_sample, ]
+testing <- train_in[-training_sample, ]
+
+# Identify variables that do not contain zeros
+all_zero_colnames <- sapply(names(validation), function(x) all(is.na(validation[,x])==TRUE))
+nznames <- names(all_zero_colnames)[all_zero_colnames==FALSE]
+nznames <- nznames[-(1:7)]
+nznames <- nznames[1:(length(nznames)-1)]
+
+```
+
+### **Modeling**
+
+Cross validation was first performed before modeling the data.
+```{r,comment=""}
+
+#Cross validation with k = 3
+fitControl <- trainControl(method='cv', number = 3)
+```
+
+
+Three modeling techniques were then applied: Decision Tree, Boosting, and Random Forest
+```{r, warning=FALSE, message= FALSE,comment=""}
+library(rpart)
+library(caret)
+library(rattle)
+model_cart <- train(
+  classe ~ ., 
+  data=training[, c('classe', nznames)],
+  trControl=fitControl,
+  method='rpart'
+)
+save(model_cart, file='./ModelFitCART.RData')
+model_gbm <- train(
+  classe ~ ., 
+  data=training[, c('classe', nznames)],
+  trControl=fitControl,
+  method='gbm'
+)
+save(model_gbm, file='./ModelFitGBM.RData')
+model_rf <- train(
+  classe ~ ., 
+  data=training[, c('classe', nznames)],
+  trControl=fitControl,
+  method='rf',
+  ntree=100
+)
+save(model_rf, file='./ModelFitRF.RData')
+
+champModel<-model_rf
+```
+### **Model Performance**
+The accuracy rate of each model was calculated for comparison.
+```{r,comment=""}
+predCART <- predict(model_cart, newdata=testing)
+cmCART <- confusionMatrix(predCART, testing$classe)
+predGBM <- predict(model_gbm, newdata=testing)
+cmGBM <- confusionMatrix(predGBM, testing$classe)
+predRF <- predict(model_rf, newdata=testing)
+cmRF <- confusionMatrix(predRF, testing$classe)
+AccuracyResults <- data.frame(
+  Model = c('CART', 'GBM', 'RF'),
+  Accuracy = rbind(cmCART$overall[1], cmGBM$overall[1], cmRF$overall[1])
+)
+print(AccuracyResults)
+
+
+```
+
+
+### **Conclusion**
+Per the accuracy rates above, gradient boosting and random forest both outperform the decision tree with random forest being the best model overall. The random forest model's superiority was further confirmed by its ability to predict all 20 test cases correctly.  
+
+```{r,comment=""}
+predValidation <- predict(champModel, newdata=validation)
+ValidationPredictionResults <- data.frame(
+  problem_id=validation$problem_id,
+  predicted=predValidation
+)
+print(ValidationPredictionResults)
+```
+
+
