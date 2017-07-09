@@ -1,0 +1,90 @@
+---
+title: "Weight Lifting Decision Tree and Random Forest"
+author: "Stephanie Stallworth"
+date: "April 8, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Executive Summary
+
+This analysis uses data from accelerometers attached to 6 participants who were asked to peform barbell lifts and correctly and incorrectly 5 different ways. The "classe" variable corresponds to how the excerise was performed by the participants with"A" denoting correct execution and the other 4 classes (B,C,D,and E) corresponding to common mistakes. My objective is to build a model to predict the manner in which participants performed the excerises for 20 different test cases.
+
+
+#Data Processing
+The training set contains over 150 predictors. The data was subseted to remove variables with near zero variables along with columns with a high percentage of N/A values.
+```{r, warning = FALSE, message = FALSE}
+
+#Read test and training data
+training<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", na.strings = c("NA","#DIV/0!",""))
+testing<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", na.strings = c("NA","#DIV/0!",""))
+
+
+#Determine variables with near zero variance and exclude these from the training set
+library(caret)
+nzvTraining<-nearZeroVar(training, saveMetrics = TRUE)
+trainingSub<-training[,nzvTraining$nzv==FALSE]
+
+#Remove first 6 variables as they are predictors
+trainingSub<-trainingSub[ ,7:length(colnames(trainingSub))]
+
+#Determine the number of NA's for each column and remove variables with over 50% NA values
+nonNA<-as.vector(apply(trainingSub,2,function(trainingSub) length(which(!is.na(trainingSub)))))
+dropNA<-c()
+        for(i in 1:length(nonNA)){
+                if(nonNA[i]>nrow(trainingSub)*.50){
+                        dropNA<-c(dropNA, colnames(trainingSub)[i])
+                }
+        }
+
+#Remove NA from training and testing sest
+trainingSub<-trainingSub[,(names(trainingSub)%in%dropNA)]
+
+#Remove classes as its the variable we're tyring to predict
+keepCols<-colnames(trainingSub[ ,-53])
+testingSub<-testing[keepCols]
+dim(trainingSub)
+dim(testingSub)
+
+```
+
+Each data set was then broken out further into three separate subsets
+
+```{r}
+set.seed(2)
+idx1 <- createDataPartition(trainingSub$classe, p=1/3, list=FALSE)
+trainingSub1 <- trainingSub[idx1,]
+df <- trainingSub[-idx1,]
+set.seed(3)
+idx2 <- createDataPartition(y=df$classe, p=0.5, list=FALSE)
+trainingSub2 <- df[idx2,]
+trainingSub3 <- df[-idx2,]
+dim(trainingSub1); dim(trainingSub2); dim(trainingSub3)
+```
+#Data Modeling
+Decision Tree
+
+```{r}
+set.seed(5)
+library(caret)
+modFit1<-train(classe ~., method = "rpart", data = trainingSub1)
+library(rattle)
+fancyRpartPlot(modFit1$finalModel)
+
+pred1<-predict(modFit1, newdata = trainingSub1)
+confusionMatrix(pred1, trainingSub1$classe)
+           
+```
+
+Per the confusion matrix above, the model's accuracy is low at 50%. Thus a second model was fitted using Random Forest methodology
+```{r}
+set.seed(7)
+modFit2 <- train(trainingSub2$classe ~ ., method="rf", preProcess=c("center", "scale"), trControl=trainControl(method = "cv", number = 4), data=trainingSub2)
+predictions2 <- predict(modFit2,trainingSub2)
+confusionMatrix(predictions2, trainingSub2$classe)
+```
+
+
